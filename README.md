@@ -5,6 +5,8 @@ This project is my attempt to simulate how a real SOC (Security Operations Cente
 
 Instead of just learning theory, I wanted to build something that actually *feels* like a real SOC dashboard — where alerts come in, get analyzed, and decisions are made.
 
+🚀 Simulating real-world SOC investigations with MITRE ATT&CK mapping, alert triage, and incident response — built as a hands-on cybersecurity learning project.
+
 ---
 
 ## 🚀 What this project does
